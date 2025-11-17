@@ -1,6 +1,6 @@
 # XACLE Submission Checker
 
-`check.py` validates a full XACLE Challenge 2025 submission package from a ZIP archive, directory, or standalone YAML/CSV pair. The script verifies:
+`check.py` validates one or more XACLE Challenge 2025 submission packages from a ZIP archive, directory, or standalone YAML/CSV pair. When multiple YAML/CSV pairs are present, each submission is checked in turn. The script verifies:
 
 - All required YAML fields are filled (`!!null` is allowed, and fields marked “optional” may remain blank)
 - `submission.label` follows the three-part `Lastname_InstitutionAbbrev_Index` format
@@ -22,7 +22,7 @@
 python check.py <zip/dir/YAML> [--csv path/to/csv]
 ```
 
-- When given a ZIP or directory, the script automatically locates the YAML and CSV inside it.
+- When given a ZIP or directory, the script automatically locates all matching YAML/CSV pairs inside it and validates each submission sequentially.
 - When given only a YAML file, the script looks for a sibling `.csv` with the same base name. Use `--csv` to point to a different CSV file if needed.
 
 ### Example
