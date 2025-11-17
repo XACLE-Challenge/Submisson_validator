@@ -31,6 +31,18 @@ python check.py <zip/dir/YAML> [--csv path/to/csv]
 python check.py Okamoto_U-Tokyo_1.zip
 ```
 
+### Expected ZIP Layout
+
+A valid ZIP can contain one or more submissions. Each submission should provide matching YAML/CSV pairs. Example:
+
+```
+Okamoto_U-Tokyo_1.zip
+├── Okamoto_U-Tokyo_1.yaml
+└── Okamoto_U-Tokyo_1.csv
+```
+
+Files inside nested folders are also supported as long as each `.yaml` has a `.csv` with the same base name.
+
 The output reports both YAML and CSV validation results. If the package is valid, it prints `All fields are filled.` followed by `CSV validation passed.`.
 
 ## Output Details
