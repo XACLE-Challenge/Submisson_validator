@@ -129,59 +129,114 @@ def extract_optional_keys(raw_text: str) -> Set[str]:
     return keys
 
 
-def find_single_zip_entry(
-    names: List[str], extension: str, description: str
-) -> str:
-    candidates = [
-        name
-        for name in names
-        if name.lower().endswith(extension)
-        and not name.endswith("/")
-        and "__macosx" not in name.lower()
-        and not pathlib.PurePosixPath(name).name.startswith("._")
-    ]
-    if not candidates:
-        raise FileNotFoundError(
-            f"No {description} found inside the zip archive."
-        )
-    if len(candidates) > 1:
-        raise ValueError(
-            f"Multiple {description} files found in the zip archive. "
-            "Please include only one."
-        )
-    return candidates[0]
+def _is_macos_artifact(path: pathlib.PurePosixPath) -> bool:
+    return "__macosx" in (part.lower() for part in path.parts) or path.name.startswith(
+        "._"
+    )
 
 
-def load_from_zip(zip_path: pathlib.Path) -> tuple[str, str]:
+def collect_zip_entries(names: List[str], extension: str, description: str) -> dict:
+    entries: dict[str, str] = {}
+    for name in names:
+        if name.endswith("/"):
+            continue
+        path = pathlib.PurePosixPath(name)
+        if _is_macos_artifact(path):
+            continue
+        if not path.name.lower().endswith(extension):
+            continue
+        stem = path.stem
+        if stem in entries:
+            raise ValueError(
+                f"Duplicate {description} '{stem}' found in the zip archive."
+            )
+        entries[stem] = name
+    return entries
+
+
+def collect_directory_entries(directory: pathlib.Path, extension: str) -> dict:
+    entries: dict[str, pathlib.Path] = {}
+    for file in directory.rglob(f"*{extension}"):
+        if not file.is_file():
+            continue
+        if file.name.startswith("._"):
+            continue
+        if not file.name.lower().endswith(extension):
+            continue
+        stem = file.stem
+        if stem in entries:
+            raise ValueError(
+                f"Duplicate {extension} file with stem '{stem}' found in {directory}."
+            )
+        entries[stem] = file
+    return entries
+
+
+def pair_submission_files(
+    yaml_map: dict, csv_map: dict, source_desc: str
+) -> List[tuple[str, Any, Any]]:
+    if not yaml_map:
+        raise FileNotFoundError(f"No YAML files found in the {source_desc}.")
+    if not csv_map:
+        raise FileNotFoundError(f"No CSV files found in the {source_desc}.")
+
+    missing_csv = sorted(set(yaml_map) - set(csv_map))
+    missing_yaml = sorted(set(csv_map) - set(yaml_map))
+    if missing_csv or missing_yaml:
+        messages = []
+        if missing_csv:
+            messages.append(
+                f"Missing CSV files for: {', '.join(missing_csv[:5])}"
+                f"{'...' if len(missing_csv) > 5 else ''}"
+            )
+        if missing_yaml:
+            messages.append(
+                f"Missing YAML files for: {', '.join(missing_yaml[:5])}"
+                f"{'...' if len(missing_yaml) > 5 else ''}"
+            )
+        raise ValueError("; ".join(messages))
+
+    pairs: List[tuple[str, Any, Any]] = []
+    for stem in sorted(yaml_map):
+        pairs.append((stem, yaml_map[stem], csv_map[stem]))
+    return pairs
+
+
+def load_from_zip(zip_path: pathlib.Path) -> List[tuple[str, str, str]]:
     with ZipFile(zip_path) as archive:
         names = archive.namelist()
-        yaml_name = find_single_zip_entry(names, ".yaml", "YAML")
-        csv_name = find_single_zip_entry(names, ".csv", "CSV")
-        yaml_text = archive.read(yaml_name).decode("utf-8")
-        csv_text = archive.read(csv_name).decode("utf-8")
-    return yaml_text, csv_text
+        yaml_map = collect_zip_entries(names, ".yaml", "YAML")
+        csv_map = collect_zip_entries(names, ".csv", "CSV")
+        entries = []
+        for stem, yaml_name, csv_name in pair_submission_files(
+            yaml_map, csv_map, "zip archive"
+        ):
+            yaml_text = archive.read(yaml_name).decode("utf-8")
+            csv_text = archive.read(csv_name).decode("utf-8")
+            entries.append((stem, yaml_text, csv_text))
+    return entries
 
 
-def load_from_directory(directory: pathlib.Path) -> tuple[str, str]:
-    yaml_files = sorted(directory.glob("*.yaml"))
-    csv_files = sorted(directory.glob("*.csv"))
-    if not yaml_files:
-        raise FileNotFoundError("No YAML file found in the provided directory.")
-    if len(yaml_files) > 1:
-        raise ValueError("Multiple YAML files found in the directory; expected only one.")
-    if not csv_files:
-        raise FileNotFoundError("No CSV file found in the provided directory.")
-    if len(csv_files) > 1:
-        raise ValueError("Multiple CSV files found in the directory; expected only one.")
-    return (
-        yaml_files[0].read_text(encoding="utf-8"),
-        csv_files[0].read_text(encoding="utf-8"),
-    )
+def load_from_directory(directory: pathlib.Path) -> List[tuple[str, str, str]]:
+    yaml_map = collect_directory_entries(directory, ".yaml")
+    csv_map = collect_directory_entries(directory, ".csv")
+    entries = []
+    for stem, yaml_path, csv_path in pair_submission_files(
+        yaml_map, csv_map, "directory"
+    ):
+        entries.append(
+            (
+                stem,
+                pathlib.Path(yaml_path).read_text(encoding="utf-8"),
+                pathlib.Path(csv_path).read_text(encoding="utf-8"),
+            )
+        )
+    return entries
 
 
 def load_from_yaml_file(
     yaml_path: pathlib.Path, csv_path: pathlib.Path | None
-) -> tuple[str, str]:
+) -> List[tuple[str, str, str]]:
     if csv_path is None:
         candidate = yaml_path.with_suffix(".csv")
         if candidate.exists():
@@ -192,15 +247,18 @@ def load_from_yaml_file(
             )
     if not csv_path.exists():
         raise FileNotFoundError(f"CSV file not found: {csv_path}")
-    return (
-        yaml_path.read_text(encoding="utf-8"),
-        csv_path.read_text(encoding="utf-8"),
-    )
+    return [
+        (
+            yaml_path.stem,
+            yaml_path.read_text(encoding="utf-8"),
+            csv_path.read_text(encoding="utf-8"),
+        )
+    ]
 
 
 def load_submission_files(
     path: pathlib.Path, csv_path: pathlib.Path | None
-) -> tuple[str, str]:
+) -> List[tuple[str, str, str]]:
     if path.suffix.lower() == ".zip":
         return load_from_zip(path)
     if path.is_dir():
@@ -370,37 +428,15 @@ def validate_csv_contents(csv_text: str) -> bool:
     return True
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Check for missing fields in the submission YAML file."
-    )
-    parser.add_argument(
-        "input_path",
-        type=pathlib.Path,
-        help="Path to the submission zip file, directory, or YAML file.",
-    )
-    parser.add_argument(
-        "--csv",
-        type=pathlib.Path,
-        help="Path to the CSV file (required when checking a standalone YAML file).",
-    )
-    args = parser.parse_args()
-
-    try:
-        yaml_text, csv_text = load_submission_files(args.input_path, args.csv)
-    except (FileNotFoundError, ValueError) as exc:
-        print(exc, file=sys.stderr)
-        return 1
-
+def validate_submission(yaml_text: str, csv_text: str) -> bool:
+    success = True
     try:
         optional_keys = extract_optional_keys(yaml_text)
         sanitized_text = yaml_text.replace("!!null", NULL_SENTINEL)
         content = yaml.safe_load(sanitized_text)
     except yaml.YAMLError as exc:
         print(f"Failed to parse YAML: {exc}", file=sys.stderr)
-        return 1
-
-    success = True
+        return False
 
     if not validate_label(content):
         success = False
@@ -421,7 +457,39 @@ def main() -> int:
     else:
         success = False
 
-    return 0 if success else 1
+    return success
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Check for missing fields in the submission YAML file."
+    )
+    parser.add_argument(
+        "input_path",
+        type=pathlib.Path,
+        help="Path to the submission zip file, directory, or YAML file.",
+    )
+    parser.add_argument(
+        "--csv",
+        type=pathlib.Path,
+        help="Path to the CSV file (required when checking a standalone YAML file).",
+    )
+    args = parser.parse_args()
+
+    try:
+        submissions = load_submission_files(args.input_path, args.csv)
+    except (FileNotFoundError, ValueError) as exc:
+        print(exc, file=sys.stderr)
+        return 1
+
+    overall_success = True
+    for stem, yaml_text, csv_text in submissions:
+        print(f"=== Validating {stem} ===")
+        if not validate_submission(yaml_text, csv_text):
+            overall_success = False
+        print()
+
+    return 0 if overall_success else 1
 
 
 if __name__ == "__main__":
