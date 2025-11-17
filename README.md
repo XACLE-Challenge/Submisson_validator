@@ -1,0 +1,40 @@
+# XACLE Submission Checker
+
+`check_yaml_fields.py` validates a full XACLE Challenge 2025 submission package from a ZIP archive, directory, or standalone YAML/CSV pair. The script verifies:
+
+- All required YAML fields are filled (`!!null` is allowed, and fields marked “optional” may remain blank)
+- `submission.label` follows the three-part `Lastname_InstitutionAbbrev_Index` format
+- `submission.abbreviation` is at most 10 characters long
+- The CSV lists every file from `10500.wav` to `13499.wav`, each with a non-empty score in the second column
+
+## Setup
+
+1. Create and activate any Python 3.11+ environment (Conda, venv, etc.).
+2. Install dependencies:
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+## Usage
+
+```bash
+python check_yaml_fields.py <zip/dir/YAML> [--csv path/to/csv]
+```
+
+- When given a ZIP or directory, the script automatically locates the YAML and CSV inside it.
+- When given only a YAML file, the script looks for a sibling `.csv` with the same base name. Use `--csv` to point to a different CSV file if needed.
+
+### Example
+
+```bash
+python check_yaml_fields.py Okamoto_U-Tokyo_1.zip
+```
+
+The output reports both YAML and CSV validation results. If the package is valid, it prints `All fields are filled.` followed by `CSV validation passed.`.
+
+## Output Details
+
+- Missing YAML fields are printed as dotted paths.
+- Invalid `submission.label` or `submission.abbreviation` values trigger clear error messages.
+- CSV validation pinpoints line numbers for empty columns, missing file names, duplicates, or out-of-range entries.
