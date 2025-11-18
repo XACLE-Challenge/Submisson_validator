@@ -36,9 +36,10 @@ python check.py Okamoto_U-Tokyo_1.zip
 A valid ZIP can contain one or more submissions. Each submission should provide matching YAML/CSV pairs. Example:
 
 ```
-Okamoto_U-Tokyo_1.zip
-├── Okamoto_U-Tokyo_1.yaml
-└── Okamoto_U-Tokyo_1.csv
+Okamoto_UTokyo_1.zip
+├── Okamoto_UTokyo_1.yaml
+├── Okamoto_UTokyo_1.yaml
+└── Okamoto_UTokyo.pdf
 ```
 
 Files inside nested folders are also supported as long as each `.yaml` has a `.csv` with the same base name.
