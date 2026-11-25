@@ -37,7 +37,7 @@ A valid ZIP can contain one or more submissions. Each submission should provide 
 
 ```
 Okamoto_UTokyo.zip
-├── Okamoto_UTokyo_1.yaml
+├── Okamoto_UTokyo_1.csv
 ├── Okamoto_UTokyo_1.yaml
 └── Okamoto_UTokyo.pdf
 ```
